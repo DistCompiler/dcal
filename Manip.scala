@@ -16,6 +16,8 @@ package distcompiler
 
 import cats.syntax.all.given
 import util.{++, toShortString}
+import com.github.difflib.{DiffUtils, UnifiedDiffUtils}
+import scala.jdk.CollectionConverters._
 
 enum Manip[+T]:
   private inline given DebugInfo = DebugInfo.poison
@@ -438,20 +440,21 @@ object Manip:
       )
 
     private def takeDiff()(using RefMap): Unit =
-      val result =
-        os.proc(
-          "diff",
-          "--report-identical-files",
-          "--ignore-space-change",
-          prevPath,
-          currPath
-        ).call(
-          stdout = os.PathRedirect(diffPath),
-          check = false
-        )
-      if result.exitCode == 0 || result.exitCode == 1
-      then () // fine (1 is used to mean files are different)
-      else throw RuntimeException(result.toString())
+      val prevLines = os.read.lines(prevPath).toList.asJava
+      val currLines = os.read.lines(currPath).toList.asJava
+      val patch = DiffUtils.diff(prevLines, currLines)
+      val unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(
+        prevPath.toString(),
+        currPath.toString(),
+        prevLines,
+        patch,
+        3
+      )
+
+      os.write.over(
+        diffPath,
+        unifiedDiff.asScala.mkString("\n")
+      )
 
     override def beforePass(debugInfo: DebugInfo)(using RefMap): Unit =
       passCounter += 1
