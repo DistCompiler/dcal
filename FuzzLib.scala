@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//> using scala 3
-//> using options -Werror -deprecation -feature -Yexplicit-nulls -Xcheck-macros
-//> using dep com.lihaoyi::os-lib:0.11.4
-//> using dep com.lihaoyi::sourcecode:0.4.2
-//> using dep org.typelevel::cats-core:2.13.0
-//> using dep dev.zio::izumi-reflect:3.0.2
-//> using dep com.lihaoyi::ujson::4.1.0
-//> using dependency "io.github.java-diff-utils:java-diff-utils:4.15"
-//> using test.dep org.scalameta::munit:1.1.0
-//> using dep edu.berkeley.cs.jqf:jqf-fuzz:2.0
+package distcompiler
 
-//> using javaProp distcompiler.Node.assertErrorRefCorrectness=no
-
-// discarded flags: -Yrequire-targetName
+class FuzzLib:
+  def fillerFunction(flag: Boolean, value: Int): Int =
+    if flag then
+      if value > 100 then value * 2
+      else if value > 50 then value + 10
+      else if value > 0 then value
+      else if value > -50 then value - 5
+      else value / 2
+    else throw new RuntimeException("Found a failure case")
