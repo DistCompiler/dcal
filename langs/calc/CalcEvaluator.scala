@@ -29,11 +29,15 @@ object CalcEvaluator extends PassSeq:
 
   def inputWellformed: Wellformed = lang.wf
 
-  private val simplifyPass = passDef:
-    wellformed := inputWellformed.makeDerived:
-      Node.Top ::=! Expression
+  val passes = List(
+    SimplifyPass,
+    RemoveLayerPass,
+  )
 
-    pass(once = false, strategy = pass.bottomUp)
+  object SimplifyPass extends PassSeq.Pass:
+    val wellformed = prevWellformed.makeDerived:
+      Node.Top ::=! Expression
+    val rules = pass(once = false, strategy = pass.bottomUp)
       .rules:
         on(
           field(tok(Expression)) *> onlyChild(
@@ -107,12 +111,13 @@ object CalcEvaluator extends PassSeq:
               ),
             ),
           )
+    end rules
+  end SimplifyPass
 
-  private val removeLayerPass = passDef:
-    wellformed := prevWellformed.makeDerived:
+  object RemoveLayerPass extends Pass:
+    val wellformed = prevWellformed.makeDerived:
       Node.Top ::=! Number
-
-    pass(once = true, strategy = pass.topDown)
+    val rules = pass(once = true, strategy = pass.topDown)
       .rules:
         on(
           tok(Expression).withChildren:
@@ -122,3 +127,6 @@ object CalcEvaluator extends PassSeq:
           splice(
             number.unparent(),
           )
+    end rules
+  end RemoveLayerPass
+end CalcEvaluator

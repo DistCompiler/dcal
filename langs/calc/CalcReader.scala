@@ -40,9 +40,8 @@ object CalcReader extends Reader:
     MulOp ::= Atom
     DivOp ::= Atom
 
-    Expression ::= fields(
-      Number,
-    )
+    Expression ::= choice(Number)
+  end wellformed
 
   private val digit: Set[Char] = ('0' to '9').toSet
   private val whitespace: Set[Char] = Set(' ', '\n', '\t')

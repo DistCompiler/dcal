@@ -28,6 +28,13 @@ object TLAParser extends PassSeq:
 
   def inputWellformed: Wellformed = TLAReader.wellformed
 
+  lazy val passes = List(
+    ReservedWordsAndComments,
+    ModuleGroups,
+    UnitDefns,
+    AddLocals,
+  )
+
   val opDeclPattern: SeqPattern[(Node, Int)] =
     val alphaCase =
       field(Alpha)
@@ -235,8 +242,8 @@ object TLAParser extends PassSeq:
 
     nodeSpanMatchedBy(impl)
 
-  val reservedWordsAndComments = passDef:
-    wellformed := TLAReader.wellformed.makeDerived:
+  object ReservedWordsAndComments extends Pass:
+    val wellformed = prevWellformed.makeDerived:
       TLAReader.groupTokens.foreach: tok =>
         tok.addCases(defns.ReservedWord.instances*)
       defns.ReservedWord.instances.iterator
@@ -256,7 +263,7 @@ object TLAParser extends PassSeq:
           SourceRange.entire(Source.fromString(op.spelling)) -> op
         .toMap
 
-    pass(once = true, strategy = pass.bottomUp)
+    val rules = pass(once = true, strategy = pass.bottomUp)
       .rules:
         on(
           tok(Alpha).filter(node => reservedWordMap.contains(node.sourceRange)),
@@ -272,9 +279,10 @@ object TLAParser extends PassSeq:
           TLAReader.Comment,
         ).rewrite: _ =>
           splice() // delete it. TODO: maybe try to gather comments?
+  end ReservedWordsAndComments
 
-  val moduleGroups = passDef:
-    wellformed := prevWellformed.makeDerived:
+  object ModuleGroups extends Pass:
+    val wellformed = prevWellformed.makeDerived:
       Node.Top ::=! repeated(lang.Module)
       TLAReader.groupTokens.foreach: tok =>
         tok.removeCases(defns.MODULE, DashSeq, EqSeq)
@@ -289,7 +297,7 @@ object TLAParser extends PassSeq:
         choice(ModuleGroup.existingCases + DashSeq + lang.Module),
       )
 
-    pass(once = false, strategy = pass.topDown)
+    val rules = pass(once = false, strategy = pass.topDown)
       .rules:
         // remove top-level modules from ModuleGroup
         on(
@@ -330,9 +338,10 @@ object TLAParser extends PassSeq:
               lang.Module.Defns(unitSoup.map(_.unparent())),
             ),
           )
+  end ModuleGroups
 
-  val unitDefns = passDef:
-    wellformed := prevWellformed.makeDerived:
+  object UnitDefns extends Pass:
+    val wellformed = prevWellformed.makeDerived:
       lang.OpSym.importFrom(lang.wf)
 
       lang.Module.Defns ::=! repeated(
@@ -428,7 +437,7 @@ object TLAParser extends PassSeq:
         ).map: (name, subsOpt) =>
           Instance(name, subsOpt.getOrElse(Nil))
 
-    pass(once = true, strategy = pass.bottomUp)
+    val rules = pass(once = true, strategy = pass.bottomUp)
       .rules:
         // operator defn variations
         on(
@@ -697,14 +706,15 @@ object TLAParser extends PassSeq:
             *> rawProofs,
         ).rewrite: contents =>
           splice(lang.UseOrHide(contents.map(_.unparent())))
+  end UnitDefns
 
-  val addLocals = passDef:
-    wellformed := prevWellformed.makeDerived:
+  object AddLocals extends Pass:
+    val wellformed = prevWellformed.makeDerived:
       lang.Module.Defns.removeCases(defns.LOCAL)
       lang.Module.Defns.addCases(lang.Local)
       lang.Local.importFrom(lang.wf)
 
-    pass(once = true, strategy = pass.bottomUp)
+    val rules = pass(once = true, strategy = pass.bottomUp)
       .rules:
         // LOCAL <op>
         on(
@@ -715,66 +725,5 @@ object TLAParser extends PassSeq:
             ~ trailing,
         ).rewrite: (local, op) =>
           splice(lang.Local(op.unparent()).like(local))
-
-  // TODO: finish expression parsing
-  // val buildExpressions = passDef:
-  //   wellformed := prevWellformed.makeDerived:
-  //     val removedCases = Seq(
-  //       TLAReader.StringLiteral,
-  //       TLAReader.NumberLiteral,
-  //       TLAReader.TupleGroup,
-  //     )
-  //     lang.Module.Defns.removeCases(removedCases*)
-  //     lang.Module.Defns.addCases(lang.Expr)
-  //     TLAReader.groupTokens.foreach: tok =>
-  //       tok.removeCases(removedCases*)
-  //       tok.addCases(lang.Expr)
-
-  //     lang.Expr.importFrom(tla.wellformed)
-  //     lang.Expr.addCases(lang.TmpGroupExpr)
-
-  //     lang.TmpGroupExpr ::= lang.Expr
-
-  //   pass(once = false, strategy = pass.bottomUp)
-  //     .rules:
-  //       on(
-  //         TLAReader.StringLiteral
-  //       ).rewrite: lit =>
-  //         splice(lang.Expr(lang.Expr.StringLiteral().like(lit)))
-  //       | on(
-  //         TLAReader.NumberLiteral
-  //       ).rewrite: lit =>
-  //         splice(lang.Expr(lang.Expr.NumberLiteral().like(lit)))
-  //       | on(
-  //         field(TLAReader.Alpha)
-  //         ~ field(
-  //           tok(TLAReader.ParenthesesGroup) *> children(
-  //             repeatedSepBy(`,`)(lang.Expr)
-  //           )
-  //         )
-  //         ~ trailing
-  //       ).rewrite: (name, params) =>
-  //         splice(lang.Expr(lang.Expr.OpCall(
-  //           lang.Id().like(name),
-  //           lang.Expr.OpCall.Params(params.iterator.map(_.unparent())),
-  //         )))
-  //       | on(
-  //         TLAReader.Alpha
-  //       ).rewrite: name =>
-  //         splice(lang.Expr(lang.Expr.OpCall(
-  //           lang.Id().like(name),
-  //           lang.Expr.OpCall.Params(),
-  //         )))
-  //       | on(
-  //         tok(TLAReader.ParenthesesGroup) *> onlyChild(lang.Expr)
-  //       ).rewrite: expr =>
-  /* // mark this group as an expression, but leave evidence that it is a group
-   * (for operator precedence handling) */
-  //         splice(lang.Expr(lang.TmpGroupExpr(expr.unparent())))
-  //       | on(
-  //         tok(TLAReader.TupleGroup).product(children(
-  //           field(repeatedSepBy(`,`)(lang.Expr))
-  //           ~ eof
-  //         ))
-  //       ).rewrite: (lit, elems) =>
-  //         splice(lang.Expr(lang.Expr.TupleLiteral(elems.iterator.map(_.unparent()))))
+  end AddLocals
+end TLAParser

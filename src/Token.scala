@@ -20,19 +20,49 @@ import forja.dsl.*
 import forja.source.SourceRange
 import forja.util.{Named, TokenMapFactory}
 
+/** Defines a "token", a unique identifier used to label and distinguish
+  * [[forja.Node]] instances.
+  *
+  * The name is a list of string segments, following an `x.y.z` pattern which
+  * maps conceptually to the token object's own name and its package / enclosing
+  * object prefix.
+  *
+  * If this trait is directly inherited by an object or defined using
+  * [[forja.wf.WellformedDef#t]], then it will guess its own name using macros
+  * (see [[forja.util.Named]]). If doing something more esoteric, pass the
+  * correct name as an implicit parameter [[forja.util.Named.OwnName]] to the
+  * [[forja.util.Named]] supertrait.
+  *
+  * @note
+  *   The name is the unique identifier, not object identity, so while Scala's
+  *   type system makes it hard to get name collisions, they are possible.
+  * @note
+  *   Name inference is currently known not to work with enum syntax.
+  */
 trait Token extends Named, TokenMapFactory.Mapped:
   private val sym = Token.TokenSym(nameSegments)
 
+  /** Checks whether this and that have the same token name.
+    *
+    * Given that two tokens with the same name must also have the same identity,
+    * this is done efficiently using an identity comparison.
+    */
   final override def equals(that: Any): Boolean =
     that match
       case tok: Token => sym == tok.sym
       case _          => false
 
+  /** Returns a hash code representing the token's name.
+    */
   final override def hashCode(): Int = sym.hashCode()
 
+  /** Forwards to the constructor of [[forja.Node]].
+    */
   final def mkNode(childrenInit: IterableOnce[Node.Child] = Nil): Node =
     Node(this)(childrenInit)
 
+  /** Forwards to the constructor of [[forja.Node]].
+    */
   final def mkNode(childrenInit: Node.Child*): Node =
     Node(this)(childrenInit)
 
@@ -89,19 +119,38 @@ object Token:
       sym.nn
   end TokenSym
 
+  /** Helper trait that overrides [[forja.Token#showSource]] to return true.
+    */
   trait ShowSource extends Token:
     override def showSource: Boolean = true
 
   extension (token: Token)
+    /** `Token(x, y, z)` constructor syntax.
+      */
     def apply(children: Node.Child*): Node =
       Node(token)(children)
+
+    /** `Token(iter)` constructor syntax.
+      */
     def apply(children: IterableOnce[Node.Child]): Node =
       Node(token)(children)
+
+    /** `Token("foo")` constructor syntax, setting the source location to "foo"
+      * (implies no children).
+      */
     def apply(sourceRange: String): Node =
       Node(token)().at(sourceRange)
+
+    /** `Token(sourceRange)` constructor syntax (implies no children).
+      */
     def apply(sourceRange: SourceRange): Node =
       Node(token)().at(sourceRange)
 
+    /** Allow patten matching using Token.
+      *
+      * @example
+      *   {{{??? match case Tok(child1, child2) => ???}}}
+      */
     def unapplySeq(node: Node): Option[Node.childrenAccessor] =
       if node.token == token
       then Some(Node.childrenAccessor(node.children))
